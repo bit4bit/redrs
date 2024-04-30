@@ -1,18 +1,10 @@
-defmodule Redrs do
+defmodule RedRS do
   @moduledoc """
   Documentation for `Redrs`.
   """
 
-  @doc """
-  Hello world.
+  use Rustler, otp_app: :redrs, crate: "redrs"
 
-  ## Examples
-
-      iex> Redrs.hello()
-      :world
-
-  """
-  def hello do
-    :world
-  end
+  def open(_url), do: :erlang.nif_error(:nif_not_loaded)
+  def close(_conn), do: :erlang.nif_error(:nif_not_loaded)
 end

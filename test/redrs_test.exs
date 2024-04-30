@@ -1,8 +1,10 @@
-defmodule RedrsTest do
+defmodule RedRSTest do
   use ExUnit.Case
-  doctest Redrs
 
-  test "greets the world" do
-    assert Redrs.hello() == :world
+  @moduletag :external
+
+  test "connect and close" do
+    conn = RedRS.open("redis://127.0.0.1/") 
+    assert RedRS.close(conn)
   end
 end
