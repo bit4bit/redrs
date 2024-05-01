@@ -1,9 +1,16 @@
+use std::sync::RwLock;
+use std::sync::Arc;
+
 use rustler::{Env, NifResult, Term, Atom};
 use rustler::types::Encoder;
 use rustler::resource::ResourceArc;
 
 struct State {
     client: redis::Client
+}
+
+struct Conn {
+    conn: Arc<RwLock<redis::Connection>>
 }
 
 #[rustler::nif]
@@ -21,10 +28,21 @@ fn open<'a>(env: Env<'a>, url: &'a str) -> NifResult<Term<'a>> {
 }
 
 #[rustler::nif(schedule = "DirtyIo")]
-fn get<'a>(env: Env<'a>, state: ResourceArc<State>, key: &'a str) -> NifResult<Term<'a>> {
-    use redis::Commands;
+fn get_connection<'a>(env: Env<'a>, state: ResourceArc<State>) -> NifResult<Term<'a>> {
+    match state.client.get_connection() {
+        Ok(conn) => {
+            let wrap = ResourceArc::new(Conn{conn: Arc::new(RwLock::new(conn))});
+            Ok((atom_from_str(env, "ok"), wrap).encode(env))
+        }
+        Err(error) =>
+            Ok((atom_from_str(env, "error"), format!("{}", error)).encode(env))
+    }
+}
 
-    let mut conn = state.client.get_connection().unwrap();
+#[rustler::nif(schedule = "DirtyIo")]
+fn get<'a>(env: Env<'a>, wconn: ResourceArc<Conn>, key: &'a str) -> NifResult<Term<'a>> {
+    use redis::Commands;
+    let mut conn = wconn.conn.write().unwrap();
 
     match conn.get(key) {
         Ok(result) => {
@@ -38,10 +56,10 @@ fn get<'a>(env: Env<'a>, state: ResourceArc<State>, key: &'a str) -> NifResult<T
 }
 
 #[rustler::nif(schedule = "DirtyIo")]
-fn set<'a>(env: Env<'a>, state: ResourceArc<State>, key: &'a str, value: &'a str) -> NifResult<Term<'a>> {
+fn set<'a>(env: Env<'a>, wconn: ResourceArc<Conn>, key: &'a str, value: &'a str) -> NifResult<Term<'a>> {
     use redis::Commands;
 
-    let mut conn = state.client.get_connection().unwrap();
+    let mut conn = wconn.conn.write().unwrap();
 
     match conn.set(key, value) {
         Ok(()) => Ok(atom_from_str(env, "ok").encode(env)),
@@ -63,7 +81,8 @@ fn atom_from_str(env: Env, name: &str) -> Atom {
 
 fn load(env: Env, _: Term) -> bool {
   rustler::resource!(State, env);
+  rustler::resource!(Conn, env);
   true
 }
 
-rustler::init!("Elixir.RedRS", [open, close, get, set], load=load);
+rustler::init!("Elixir.RedRS", [open, close, get, set, get_connection], load=load);

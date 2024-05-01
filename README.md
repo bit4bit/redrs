@@ -1,6 +1,8 @@
 # Redrs
 
-**TODO: Add description**
+Lab - Experimental client using `redis-rust`.
+
+`mix run benchee.exs`
 
 ## Installation
 

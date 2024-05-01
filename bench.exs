@@ -1,7 +1,8 @@
 values = Enum.to_list(1..10)
 
 {:ok, redix} = Redix.start_link("redis://localhost:6379")
-{:ok, redrs} = RedRS.open("redis://localhost:6379")
+{:ok, client} = RedRS.open("redis://localhost:6379")
+{:ok, redrs} = RedRS.get_connection(client)
 
 Benchee.run(
   %{
@@ -24,5 +25,5 @@ Benchee.run(
   memory_time: 2
 )
 
-RedRS.close(redrs)
+RedRS.close(client)
 Redix.stop(redix)

@@ -4,17 +4,31 @@ defmodule RedRSTest do
   @moduletag :external
 
   test "open and close" do
-    {:ok, conn} = RedRS.open("redis://127.0.0.1/") 
-    assert RedRS.close(conn) == :ok
+    {:ok, client} = RedRS.open("redis://127.0.0.1/")
+    {:ok, _} = RedRS.get_connection(client)
+    assert RedRS.close(client) == :ok
   end
 
   test "set and get" do
-    {:ok, conn} = RedRS.open("redis://127.0.0.1/")
+    {:ok, client} = RedRS.open("redis://127.0.0.1/")
+    {:ok, conn} = RedRS.get_connection(client)
 
     assert :ok == RedRS.set(conn, "name", "mero")
     assert {:ok, "mero"} == RedRS.get(conn, "name")
 
-    RedRS.close(conn)
+    RedRS.close(client)
+  end
+
+  # TODO how can we guarantee closes?
+  @tag skip: true
+  describe "get_connection/1" do
+    test "when invalid returns error" do
+      {:ok, client} = RedRS.open("redis://127.0.0.1/")
+      {:ok, _conn} = RedRS.get_connection(client)
+      RedRS.close(client)
+
+      assert {:error, _} = RedRS.get_connection(client)
+    end
   end
 
   describe "open/1" do
@@ -25,7 +39,8 @@ defmodule RedRSTest do
 
   describe "get/2" do
     setup do
-      {:ok, conn} = RedRS.open("redis://127.0.0.1/")
+      {:ok, client} = RedRS.open("redis://127.0.0.1/")
+      {:ok, conn} = RedRS.get_connection(client)
       [conn: conn]
     end
 
