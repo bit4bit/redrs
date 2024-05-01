@@ -1,6 +1,7 @@
 use std::sync::RwLock;
 use std::sync::Arc;
 
+use rustler::atoms;
 use rustler::{Env, NifResult, Term, Atom};
 use rustler::types::Encoder;
 use rustler::resource::ResourceArc;
@@ -13,6 +14,13 @@ struct Conn {
     conn: Arc<RwLock<redis::Connection>>
 }
 
+mod atoms {
+    rustler::atoms! {
+        ok,
+        error
+    }
+}
+
 #[rustler::nif]
 fn open<'a>(env: Env<'a>, url: &'a str) -> NifResult<Term<'a>> {
     match redis::Client::open(url) {
@@ -20,10 +28,10 @@ fn open<'a>(env: Env<'a>, url: &'a str) -> NifResult<Term<'a>> {
             let state = ResourceArc::new(State{
                 client: client
             });
-            Ok((atom_from_str(env, "ok"), state).encode(env))
+            Ok((atoms::ok(), state).encode(env))
         }
         Err(error) =>
-            Ok((atom_from_str(env, "error"), format!("{}", error)).encode(env))
+            Ok((atoms::error(), format!("{}", error)).encode(env))
     }
 }
 
@@ -32,10 +40,10 @@ fn get_connection<'a>(env: Env<'a>, state: ResourceArc<State>) -> NifResult<Term
     match state.client.get_connection() {
         Ok(conn) => {
             let wrap = ResourceArc::new(Conn{conn: Arc::new(RwLock::new(conn))});
-            Ok((atom_from_str(env, "ok"), wrap).encode(env))
+            Ok((atoms::ok(), wrap).encode(env))
         }
         Err(error) =>
-            Ok((atom_from_str(env, "error"), format!("{}", error)).encode(env))
+            Ok((atoms::error(), format!("{}", error)).encode(env))
     }
 }
 
@@ -48,10 +56,10 @@ fn get<'a>(env: Env<'a>, wconn: ResourceArc<Conn>, key: &'a str) -> NifResult<Te
         Ok(result) => {
             // TODO: how can we support more types?
             let value : Option<String> = result;
-            Ok((atom_from_str(env, "ok"), value).encode(env))
+            Ok((atoms::ok(), value).encode(env))
         }
         Err(error) =>
-            Ok((atom_from_str(env, "error"), format!("{}", error)).encode(env))
+            Ok((atoms::error(), format!("{}", error)).encode(env))
     }
 }
 
@@ -62,8 +70,8 @@ fn set<'a>(env: Env<'a>, wconn: ResourceArc<Conn>, key: &'a str, value: &'a str)
     let mut conn = wconn.conn.write().unwrap();
 
     match conn.set(key, value) {
-        Ok(()) => Ok(atom_from_str(env, "ok").encode(env)),
-        Err(error) => Ok((atom_from_str(env, "error"), format!("{}", error)).encode(env))
+        Ok(()) => Ok(atoms::ok().encode(env)),
+        Err(error) => Ok((atoms::error(), format!("{}", error)).encode(env))
     }
 }
 
@@ -71,12 +79,7 @@ fn set<'a>(env: Env<'a>, wconn: ResourceArc<Conn>, key: &'a str, value: &'a str)
 fn close<'a>(env: Env<'a>, state: ResourceArc<State>) -> NifResult<Term<'a>> {
   drop(state);
 
-  Ok(atom_from_str(env, "ok").encode(env))
-}
-
-
-fn atom_from_str(env: Env, name: &str) -> Atom {
-  Atom::from_str(env, name).unwrap()
+  Ok(atoms::ok().encode(env))
 }
 
 fn load(env: Env, _: Term) -> bool {
