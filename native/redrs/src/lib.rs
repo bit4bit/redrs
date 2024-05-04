@@ -47,7 +47,7 @@ fn get_connection<'a>(env: Env<'a>, state: ResourceArc<State>) -> NifResult<Term
 }
 
 #[rustler::nif(schedule = "DirtyIo")]
-fn do_command<'a>(env: Env<'a>, wconn: ResourceArc<Conn>, args: Term) -> NifResult<Term<'a>> {
+fn command<'a>(env: Env<'a>, wconn: ResourceArc<Conn>, args: Term) -> NifResult<Term<'a>> {
     let mut conn = wconn.conn.write().unwrap();
 
     let mut eargs = args.decode::<rustler::ListIterator>()?;
@@ -83,4 +83,4 @@ fn load(env: Env, _: Term) -> bool {
   true
 }
 
-rustler::init!("Elixir.RedRS", [open, close, get_connection, do_command], load=load);
+rustler::init!("Elixir.RedRSNif", [open, close, get_connection, command], load=load);

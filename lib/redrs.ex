@@ -1,13 +1,9 @@
 defmodule RedRS do
-  @moduledoc """
-  Documentation for `Redrs`.
-  """
+  alias RedRSNif, as: NIF
 
-  use Rustler, otp_app: :redrs, crate: "redrs"
-
-  def open(_url), do: :erlang.nif_error(:nif_not_loaded)
-  def get_connection(_client), do: :erlang.nif_error(:nif_not_loaded)
-  def close(_conn), do: :erlang.nif_error(:nif_not_loaded)
+  defdelegate open(conn), to: NIF
+  defdelegate get_connection(conn), to: NIF
+  defdelegate close(conn), to: NIF
 
   def get(conn, key) do
     command(conn, ["GET", key])
@@ -22,8 +18,6 @@ defmodule RedRS do
 
   def command(conn, cmd) do
     # only string is supported
-    do_command(conn, List.wrap(cmd) |> Enum.map(&to_string/1))
+    NIF.command(conn, List.wrap(cmd) |> Enum.map(&to_string/1))
   end
-
-  def do_command(_conn, _cmd), do: :erlang.nif_error(:nif_not_loaded)
 end
