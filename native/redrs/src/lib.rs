@@ -1,8 +1,7 @@
 use std::sync::RwLock;
 use std::sync::Arc;
 
-use rustler::atoms;
-use rustler::{Env, NifResult, Term, Atom};
+use rustler::{Env, NifResult, Term};
 use rustler::types::Encoder;
 use rustler::resource::ResourceArc;
 
@@ -48,11 +47,19 @@ fn get_connection<'a>(env: Env<'a>, state: ResourceArc<State>) -> NifResult<Term
 }
 
 #[rustler::nif(schedule = "DirtyIo")]
-fn get<'a>(env: Env<'a>, wconn: ResourceArc<Conn>, key: &'a str) -> NifResult<Term<'a>> {
-    use redis::Commands;
+fn do_command<'a>(env: Env<'a>, wconn: ResourceArc<Conn>, args: Term) -> NifResult<Term<'a>> {
     let mut conn = wconn.conn.write().unwrap();
 
-    match conn.get(key) {
+    let mut eargs = args.decode::<rustler::ListIterator>()?;
+    let cmd : String = eargs.next().ok_or(rustler::Error::BadArg)?.decode()?;
+
+    let mut query = redis::cmd(cmd.as_str());
+    for earg in eargs {
+        let arg : String = earg.decode()?;
+        query.arg(arg);
+    }
+    
+    match query.query(&mut conn) {
         Ok(result) => {
             // TODO: how can we support more types?
             let value : Option<String> = result;
@@ -60,18 +67,6 @@ fn get<'a>(env: Env<'a>, wconn: ResourceArc<Conn>, key: &'a str) -> NifResult<Te
         }
         Err(error) =>
             Ok((atoms::error(), format!("{}", error)).encode(env))
-    }
-}
-
-#[rustler::nif(schedule = "DirtyIo")]
-fn set<'a>(env: Env<'a>, wconn: ResourceArc<Conn>, key: &'a str, value: &'a str) -> NifResult<Term<'a>> {
-    use redis::Commands;
-
-    let mut conn = wconn.conn.write().unwrap();
-
-    match conn.set(key, value) {
-        Ok(()) => Ok(atoms::ok().encode(env)),
-        Err(error) => Ok((atoms::error(), format!("{}", error)).encode(env))
     }
 }
 
@@ -88,4 +83,4 @@ fn load(env: Env, _: Term) -> bool {
   true
 }
 
-rustler::init!("Elixir.RedRS", [open, close, get, set, get_connection], load=load);
+rustler::init!("Elixir.RedRS", [open, close, get_connection, do_command], load=load);

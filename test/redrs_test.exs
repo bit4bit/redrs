@@ -3,20 +3,43 @@ defmodule RedRSTest do
 
   @moduletag :external
 
-  test "open and close" do
-    {:ok, client} = RedRS.open("redis://127.0.0.1/")
-    {:ok, _} = RedRS.get_connection(client)
-    assert RedRS.close(client) == :ok
-  end
+  describe "commands" do
+    setup do
+      {:ok, client} = RedRS.open("redis://127.0.0.1/")
+      {:ok, conn} = RedRS.get_connection(client)
+      [conn: conn]
+    end
 
-  test "set and get" do
-    {:ok, client} = RedRS.open("redis://127.0.0.1/")
-    {:ok, conn} = RedRS.get_connection(client)
+    test "open and close" do
+      {:ok, client} = RedRS.open("redis://127.0.0.1/")
+      {:ok, _} = RedRS.get_connection(client)
+      assert RedRS.close(client) == :ok
+    end
 
-    assert :ok == RedRS.set(conn, "name", "mero")
-    assert {:ok, "mero"} == RedRS.get(conn, "name")
+    test "open multiple connections" do
+      {:ok, client} = RedRS.open("redis://127.0.0.1/")
 
-    RedRS.close(client)
+      {:ok, conn1} = RedRS.get_connection(client)
+      {:ok, conn2} = RedRS.get_connection(client)
+      {:ok, conn3} = RedRS.get_connection(client)
+
+      for conn <- [conn1, conn2, conn3] do
+        :ok = RedRS.set(conn, "demo", "demo")
+        assert {:ok, "demo"} = RedRS.get(conn, "demo")
+
+        RedRS.close(client)
+      end
+    end
+
+    test "set and get", %{conn: conn} do
+      assert :ok = RedRS.set(conn, "name", "mero")
+      assert {:ok, "mero"} == RedRS.get(conn, "name")
+    end
+
+    test "command", %{conn: conn} do
+      {:ok, _} = RedRS.command(conn, ["SET", "nama", "mera"])
+      assert {:ok, "mera"} = RedRS.command(conn, ["GET", "nama"])
+    end
   end
 
   # TODO how can we guarantee closes?
@@ -33,7 +56,8 @@ defmodule RedRSTest do
 
   describe "open/1" do
     test "when invalid url returns error" do
-      assert {:error, "Redis URL did not parse- InvalidClientConfig"} = RedRS.open("redisa://127.0.0.5353/")
+      assert {:error, "Redis URL did not parse- InvalidClientConfig"} =
+               RedRS.open("redisa://127.0.0.5353/")
     end
   end
 
