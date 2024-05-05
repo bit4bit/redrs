@@ -64,8 +64,9 @@ fn get_connection<'a>(env: Env<'a>, state: ResourceArc<State>, timeout: u64) -> 
 
 fn spawn_handler(env: Env<'_>, wconn: RwLock<redis::Connection>, receiver: Receiver<RedisExecution>) {
     thread::spawn::<thread::ThreadSpawner, _>(env, move |env: Env<'_>| {
+        let mut conn = wconn.write().unwrap();
+
         for recv in receiver {
-            let mut conn = wconn.write().unwrap();
             let mut args = recv.command.into_iter();
             let cmd : String = args.next().unwrap();
             let mut query = redis::cmd(cmd.as_str());
