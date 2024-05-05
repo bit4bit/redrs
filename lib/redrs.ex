@@ -22,15 +22,21 @@ defmodule RedRS do
 
   def command(conn, cmd) do
     # only string is supported
-    case NIF.command(conn, self(), List.wrap(cmd) |> Enum.map(&to_string/1)) do
+    ref = make_ref()
+
+    case NIF.command(conn, ref, self(), List.wrap(cmd) |> Enum.map(&to_string/1)) do
       :ok ->
         receive do
-          {:redrs, :ok, value} ->
+          {:redrs, :ok, ^ref, value} ->
             {:ok, value}
 
-          {:redrs, :error, error} ->
+          {:redrs, :error, ^ref, error} ->
             {:error, error}
+        after
+          5_000 ->
+            raise "NIF timeout"
         end
+
       {:error, error} ->
         {:error, error}
     end

@@ -6,6 +6,7 @@ use rustler::{Env, NifResult, Term};
 use rustler::types::{Encoder, LocalPid};
 use rustler::resource::ResourceArc;
 use rustler::thread;
+use rustler::wrapper::NIF_TERM;
 
 type RedisCommand = Vec<String>;
 
@@ -18,6 +19,7 @@ struct Conn {
 }
 
 struct RedisExecution {
+    reference: NIF_TERM,
     reply_pid: LocalPid,
     command: RedisCommand
 }
@@ -70,16 +72,20 @@ fn spawn_handler(env: Env<'_>, wconn: RwLock<redis::Connection>, receiver: Recei
             for arg in args {
                 query.arg(arg);
             }
-            
-            match query.query(&mut conn) {
-                Ok(result) => {
-                    // TODO: how can we support more types?
-                    let value : Option<String> = result;
 
-                    let _ = env.send(&recv.reply_pid, (atoms::redrs(), atoms::ok(), value.clone()).encode(env));
-                }
-                Err(error) => {
-                    let _ = env.send(&recv.reply_pid, (atoms::redrs(), atoms::error(), format!("{}", error)).encode(env));
+            unsafe {
+                // TODO check another way to pass references
+                let reference = Term::new(env, recv.reference);
+                match query.query(&mut conn) {
+                    Ok(result) => {
+                        // TODO: how can we support more types?
+                        let value : Option<String> = result;
+
+                        let _ = env.send(&recv.reply_pid, (atoms::redrs(), atoms::ok(), reference, value.clone()).encode(env));
+                    }
+                    Err(error) => {
+                        let _ = env.send(&recv.reply_pid, (atoms::redrs(), atoms::error(), reference, format!("{}", error)).encode(env));
+                    }
                 }
             }
         }
@@ -89,10 +95,10 @@ fn spawn_handler(env: Env<'_>, wconn: RwLock<redis::Connection>, receiver: Recei
 }
 
 #[rustler::nif(schedule = "DirtyIo")]
-fn command<'a>(env: Env<'a>, conn: ResourceArc<Conn>, reply_pid: LocalPid, args: Term) -> NifResult<Term<'a>> {
+fn command<'a>(env: Env<'a>, conn: ResourceArc<Conn>, reference: Term, reply_pid: LocalPid, args: Term) -> NifResult<Term<'a>> {
     let args = args.decode::<rustler::ListIterator>()?.map(|earg| earg.decode::<String>().unwrap()).collect();
 
-    match conn.sender.send(RedisExecution{command: args, reply_pid: reply_pid}) {
+    match conn.sender.send(RedisExecution{reference: reference.as_c_arg(), command: args, reply_pid: reply_pid}) {
         Ok(()) => Ok(atoms::ok().encode(env)),
         Err(error) => Ok((atoms::redrs(), atoms::error(), format!("{}", error)).encode(env))
     }
