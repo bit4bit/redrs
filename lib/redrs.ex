@@ -1,18 +1,10 @@
 defmodule RedRS do
   alias RedRSNif, as: NIF
 
-  defstruct [:conn, :reply_pid]
-
   defdelegate open(conn), to: NIF
 
   def get_connection(conn) do
-    reply_pid = self()
-    case NIF.get_connection(conn, reply_pid) do
-      {:ok, rconn} ->
-        {:ok, %__MODULE__{conn: rconn, reply_pid: reply_pid}}
-      {:error, error} ->
-        {:error, error}
-    end
+    NIF.get_connection(conn, 5000)
   end
 
   defdelegate close(conn), to: NIF
@@ -28,20 +20,19 @@ defmodule RedRS do
     end
   end
 
-  def command(%__MODULE__{conn: conn, reply_pid: reply_pid}, cmd) do
+  def command(conn, cmd) do
     # only string is supported
-    NIF.command(conn, List.wrap(cmd) |> Enum.map(&to_string/1))
+    case NIF.command(conn, self(), List.wrap(cmd) |> Enum.map(&to_string/1)) do
+      :ok ->
+        receive do
+          {:redrs, :ok, value} ->
+            {:ok, value}
 
-    receive do
-      {:redrs, :ok, value} ->
-        IO.inspect(value)
-        {:ok, value}
-
-      {:redrs, :error, error} ->
+          {:redrs, :error, error} ->
+            {:error, error}
+        end
+      {:error, error} ->
         {:error, error}
-    after
-      1_000 ->
-        raise "timeout"
     end
   end
 end

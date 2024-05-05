@@ -1,5 +1,6 @@
 use std::sync::RwLock;
 use std::sync::mpsc::{channel, Receiver, Sender};
+use std::time::Duration;
 
 use rustler::{Env, NifResult, Term};
 use rustler::types::{Encoder, LocalPid};
@@ -13,11 +14,14 @@ struct State {
 }
 
 struct Conn {
-    sender: Sender<RedisCommand>
+    sender: Sender<RedisExecution>
 }
 
+struct RedisExecution {
+    reply_pid: LocalPid,
+    command: RedisCommand
+}
 
-    
 mod atoms {
     rustler::atoms! {
         ok,
@@ -41,12 +45,14 @@ fn open<'a>(env: Env<'a>, url: &'a str) -> NifResult<Term<'a>> {
 }
 
 #[rustler::nif(schedule = "DirtyIo")]
-fn get_connection<'a>(env: Env<'a>, state: ResourceArc<State>, reply_pid: LocalPid) -> NifResult<Term<'a>> {
-    match state.client.get_connection() {
+fn get_connection<'a>(env: Env<'a>, state: ResourceArc<State>, timeout: u64) -> NifResult<Term<'a>> {
+    match state.client.get_connection_with_timeout(Duration::from_millis(timeout)) {
         Ok(conn) => {
             let (sender, receiver) = channel();
+            
+            spawn_handler(env, RwLock::new(conn), receiver);
+
             let wrap = ResourceArc::new(Conn{sender: sender});
-            spawn_handler(env, RwLock::new(conn), reply_pid, receiver);
             Ok((atoms::ok(), wrap).encode(env))
         }
         Err(error) =>
@@ -54,12 +60,11 @@ fn get_connection<'a>(env: Env<'a>, state: ResourceArc<State>, reply_pid: LocalP
     }
 }
 
-fn spawn_handler(env: Env<'_>, wconn: RwLock<redis::Connection>, reply_pid: LocalPid, receiver: Receiver<RedisCommand>) {
+fn spawn_handler(env: Env<'_>, wconn: RwLock<redis::Connection>, receiver: Receiver<RedisExecution>) {
     thread::spawn::<thread::ThreadSpawner, _>(env, move |env: Env<'_>| {
         for recv in receiver {
-            println!("recv {:?}", recv);
             let mut conn = wconn.write().unwrap();
-            let mut args = recv.into_iter();
+            let mut args = recv.command.into_iter();
             let cmd : String = args.next().unwrap();
             let mut query = redis::cmd(cmd.as_str());
             for arg in args {
@@ -71,11 +76,10 @@ fn spawn_handler(env: Env<'_>, wconn: RwLock<redis::Connection>, reply_pid: Loca
                     // TODO: how can we support more types?
                     let value : Option<String> = result;
 
-                    let _ = env.send(&reply_pid, (atoms::redrs(), atoms::ok(), value.clone()).encode(env));
-                    println!("send {:?}", value);
+                    let _ = env.send(&recv.reply_pid, (atoms::redrs(), atoms::ok(), value.clone()).encode(env));
                 }
                 Err(error) => {
-                    let _ = env.send(&reply_pid, (atoms::redrs(), atoms::error(), format!("{}", error)).encode(env));
+                    let _ = env.send(&recv.reply_pid, (atoms::redrs(), atoms::error(), format!("{}", error)).encode(env));
                 }
             }
         }
@@ -85,12 +89,13 @@ fn spawn_handler(env: Env<'_>, wconn: RwLock<redis::Connection>, reply_pid: Loca
 }
 
 #[rustler::nif(schedule = "DirtyIo")]
-fn command<'a>(env: Env<'a>, conn: ResourceArc<Conn>, args: Term) -> NifResult<Term<'a>> {
+fn command<'a>(env: Env<'a>, conn: ResourceArc<Conn>, reply_pid: LocalPid, args: Term) -> NifResult<Term<'a>> {
     let args = args.decode::<rustler::ListIterator>()?.map(|earg| earg.decode::<String>().unwrap()).collect();
 
-    conn.sender.send(args).unwrap();
-
-    Ok(atoms::ok().encode(env))
+    match conn.sender.send(RedisExecution{command: args, reply_pid: reply_pid}) {
+        Ok(()) => Ok(atoms::ok().encode(env)),
+        Err(error) => Ok((atoms::redrs(), atoms::error(), format!("{}", error)).encode(env))
+    }
 }
 
 #[rustler::nif(schedule = "DirtyIo")]    
