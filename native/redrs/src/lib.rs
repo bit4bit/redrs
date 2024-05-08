@@ -82,8 +82,9 @@ fn spawn_handler(env: Env<'_>, wconn: RwLock<redis::Connection>, receiver: Recei
                         // TODO: how can we support more types?
                         let value : Option<String> = result;
 
-                        let _ = env.send(&recv.reply_pid, (atoms::redrs(), atoms::ok(), reference, value.clone()).encode(env));
+                        let _ = env.send(&recv.reply_pid, (atoms::redrs(), atoms::ok(), reference, value).encode(env));
                     }
+                    // TODO: stop on network errors
                     Err(error) => {
                         let _ = env.send(&recv.reply_pid, (atoms::redrs(), atoms::error(), reference, format!("{}", error)).encode(env));
                     }

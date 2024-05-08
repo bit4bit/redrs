@@ -1,0 +1,4 @@
+* DONE rust dependency flame (nothing)
+* DONE rustler OwnedEnv (nothing)
+* DONE rust feature keep-alive (nothing)
+* TODO rust redis aio
