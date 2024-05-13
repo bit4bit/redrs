@@ -33,7 +33,7 @@ defmodule RedRS do
           {:redrs, :error, ^ref, error} ->
             {:error, error}
         after
-          5_000 ->
+          30_000 ->
             raise "NIF timeout"
         end
 
